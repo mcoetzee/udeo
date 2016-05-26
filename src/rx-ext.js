@@ -15,7 +15,7 @@ function fromPromise(apiOperation, cancel$) {
 }
 
 Observable.prototype.filterAction = function(type) {
-  return this.filter(pl => pl.type === type).share();
+  return this.filter(action => action.type === type).share();
 };
 
 Observable.prototype.mapAction = function(type) {
