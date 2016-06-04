@@ -32,7 +32,6 @@ export function createStore(defs, preloadedState = {}) {
       // The API provided to each flow function in addition to the dispatch$
       const api = {
         getState,
-        getState$,
         // Provides a way to get a single action stream by type
         getAction$: (actionType) => getSideEffect$(moduleName, actionType),
         dispatch,
@@ -57,14 +56,16 @@ export function createStore(defs, preloadedState = {}) {
     return moduleName ? currentState[moduleName] : currentState;
   }
 
+
+  const connectedStreams = {};
   /**
-   * Gets the state stream or defers if the stream has not yet been added (in order
-   * to handle race conditions)
+   * Gets the state stream and connects it if not yet connected
    */
   function getState$(moduleName) {
     let state$ = stateStreams[moduleName];
-    if (!state$) {
-      stateStreams[moduleName] = state$ = Observable.defer(() => stateStreams[moduleName]);
+    if (!connectedStreams[moduleName]) {
+      connectedStreams[moduleName] = state$;
+      state$.connect();
     }
     return state$;
   }
@@ -146,7 +147,6 @@ export function createStore(defs, preloadedState = {}) {
         }
         actionMiddleware(moduleName, action);
       })
-      // Use preloaded state or use dummy action to get initial state from reducer
       .startWith(currentState[moduleName])
       // Reduce state
       .scan((state, action) => {
@@ -174,8 +174,7 @@ export function createStore(defs, preloadedState = {}) {
         newStateMiddleware(moduleName, newState);
       })
       // Provide latest from state stream on subscribe
-      .publishReplay(1)
-      .refCount();
+      .publishReplay(1);
   }
 
   // Init
