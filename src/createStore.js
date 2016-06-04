@@ -11,11 +11,12 @@ const CLEAR_STATE = '@udeo/CLEAR_STATE';
  * The flow function should return an array of action streams to be reduced
  * by the provided reducer in order to form the module's state stream
  */
-export function createStore(defs) {
+export function createStore(defs, preloadedState = {}) {
   // The raw action stream used when dispatching
   const dispatch$ = new Subject();
   const sideEffectStreams = {};
   const stateStreams = {};
+  let currentState = preloadedState;
 
   /**
    * Adds a state stream for each module provided
@@ -23,8 +24,14 @@ export function createStore(defs) {
   function addStreams(definitions) {
     Object.keys(definitions).forEach(moduleName => {
       const moduleResources = definitions[moduleName];
+      // Use preloaded state or use dummy action to get initial state from reducer
+      if (!currentState[moduleName]) {
+        currentState[moduleName] = moduleResources.reducer(undefined, { type: INIT });
+      }
+
       // The API provided to each flow function in addition to the dispatch$
       const api = {
+        getState,
         getState$,
         // Provides a way to get a single action stream by type
         getAction$: (actionType) => getSideEffect$(moduleName, actionType),
@@ -44,6 +51,10 @@ export function createStore(defs) {
 
   function dispatch(action) {
     dispatch$.next(action);
+  }
+
+  function getState(moduleName) {
+    return moduleName ? currentState[moduleName] : currentState;
   }
 
   /**
@@ -135,8 +146,8 @@ export function createStore(defs) {
         }
         actionMiddleware(moduleName, action);
       })
-      // Use dummy action to get initial state from reducer
-      .startWith(reducer(undefined, { type: INIT }))
+      // Use preloaded state or use dummy action to get initial state from reducer
+      .startWith(currentState[moduleName])
       // Reduce state
       .scan((state, action) => {
         switch (action.type) {
@@ -154,8 +165,14 @@ export function createStore(defs) {
             return reducer(state, action);
         }
       })
-      // Side effects
-      .do(state => newStateMiddleware(moduleName, state))
+      // Record new state + side effects
+      .do(newState => {
+        currentState = {
+          ...currentState,
+          [moduleName]: newState,
+        };
+        newStateMiddleware(moduleName, newState);
+      })
       // Provide latest from state stream on subscribe
       .publishReplay(1)
       .refCount();
@@ -166,9 +183,9 @@ export function createStore(defs) {
 
   // Store API
   return {
-    addStreams,
     dispatch,
     getState$,
+    getState,
     hydrate,
     clearState,
     setMiddleware,

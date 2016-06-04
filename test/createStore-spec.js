@@ -28,11 +28,11 @@ describe('createStore', () => {
 
     expect(Object.keys(store)).to.have.length(6);
     expect(store.getState$).to.be.a('function');
+    expect(store.getState).to.be.a('function');
     expect(store.dispatch).to.be.a('function');
     expect(store.setMiddleware).to.be.a('function');
     expect(store.hydrate).to.be.a('function');
     expect(store.clearState).to.be.a('function');
-    expect(store.addStreams).to.be.a('function');
   });
 
   it('gets initial state from reducer', () => {
@@ -111,14 +111,12 @@ describe('createStore', () => {
     });
   });
 
-  it('allows state stream access when composing action streams', () => {
+  it('allows state access when composing action streams', () => {
     const fooModule = {
-      flow(dispatch$, { getState$ }) {
-        const bar$ = getState$('barModule').pluck('bar');
-
-        const foo$ = dispatch$
-          .filterAction(FOO)
-          .withLatestFrom(bar$, (action, bar) => action.payload * bar)
+      flow(dispatch$, { getState }) {
+        const foo$ = dispatch$.filterAction(FOO)
+          .pluckPayload()
+          .map(payload => getState().barModule.bar * payload)
           .mapAction(FOO);
 
         return [foo$];
@@ -157,5 +155,38 @@ describe('createStore', () => {
     expect(fooState).to.deep.eq([20, 42]);
 
     subOne.unsubscribe();
+  });
+
+  it('preloads state', () => {
+    const fooModule = {
+      flow: fooFlow,
+      reducer(state = { valueA: 11, valueB: 12 }, { type }) {
+        switch (type) {
+          case FOO:
+            return {
+              ...state,
+              valueA: state.valueA * 2,
+            };
+          default:
+            return state;
+        }
+      },
+    };
+
+    const preloadedState = {
+      fooModule: { valueA: 13, valueB: 14 }
+    };
+    const store = createStore({ fooModule }, preloadedState);
+
+    let fooState;
+    const sub1 = store.getState$('fooModule').subscribe(state => {
+      fooState = state;
+    });
+
+    expect(fooState).to.deep.eq({ valueA: 13, valueB: 14 });
+
+    store.dispatch({ type: FOO });
+    expect(fooState).to.deep.eq({ valueA: 26, valueB: 14 });
+    sub1.unsubscribe();
   });
 });
