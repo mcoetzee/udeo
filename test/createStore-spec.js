@@ -317,4 +317,45 @@ describe('createStore', () => {
     sub2.unsubscribe();
     sub3.unsubscribe();
   });
+
+  it('broadcasts state changes to multiple subscriptions', () => {
+    const fooModule = {
+      flow: fooFlow,
+      reducer(state = [], { type }) {
+        switch (type) {
+          case FOO:
+            return state.concat(type);
+          default:
+            return state;
+        }
+      },
+    };
+
+    const store = createStore({ fooModule });
+
+    let fooState;
+    const sub1 = store.getState$('fooModule').subscribe(state => {
+      fooState = state;
+    });
+
+    store.dispatch({ type: FOO });
+    expect(fooState).to.deep.eq([FOO]);
+
+    let foo2State;
+    const sub2 = store.getState$('fooModule').subscribe(state => {
+      foo2State = state;
+    });
+    expect(foo2State).to.deep.eq([FOO]);
+
+    store.dispatch({ type: FOO });
+    expect(fooState).to.deep.eq([FOO, FOO]);
+    expect(foo2State).to.deep.eq([FOO, FOO]);
+
+    sub1.unsubscribe();
+    store.dispatch({ type: FOO });
+
+    expect(fooState).to.deep.eq([FOO, FOO]);
+    expect(foo2State).to.deep.eq([FOO, FOO, FOO]);
+    sub2.unsubscribe();
+  });
 });
