@@ -358,4 +358,61 @@ describe('createStore', () => {
     expect(foo2State).to.deep.eq([FOO, FOO, FOO]);
     sub2.unsubscribe();
   });
+
+  it('passes state changes to middleware', () => {
+    const fooModule = {
+      flow: fooFlow,
+      reducer(state = [], { type }) {
+        switch (type) {
+          case FOO:
+            return state.concat(type);
+          default:
+            return state;
+        }
+      },
+    };
+    const barModule = {
+      flow: barFlow,
+      reducer(state = [], { type }) {
+        switch (type) {
+          case BAR:
+            return state.concat(type);
+          default:
+            return state;
+        }
+      },
+    };
+
+    let loggedModuleName;
+    let loggedAction;
+    let loggedOldState;
+    let loggedNewState;
+    const logger = (moduleName, action, oldState, newState) => {
+      loggedModuleName = moduleName;
+      loggedAction = action;
+      loggedOldState = oldState;
+      loggedNewState = newState;
+    };
+
+    const store = createStore({ fooModule, barModule });
+    store.setMiddleware(logger);
+
+    const sub1 = store.getState$('fooModule').subscribe(s => {});
+    const sub2 = store.getState$('barModule').subscribe(s => {});
+
+    store.dispatch({ type: FOO });
+    expect(loggedModuleName).to.eq('fooModule');
+    expect(loggedAction).to.deep.eq({ type: FOO });
+    expect(loggedOldState).to.deep.eq([]);
+    expect(loggedNewState).to.deep.eq([FOO]);
+
+    store.dispatch({ type: BAR });
+    expect(loggedModuleName).to.eq('barModule');
+    expect(loggedAction).to.deep.eq({ type: BAR });
+    expect(loggedOldState).to.deep.eq([]);
+    expect(loggedNewState).to.deep.eq([BAR]);
+
+    sub1.unsubscribe();
+    sub2.unsubscribe();
+  });
 });

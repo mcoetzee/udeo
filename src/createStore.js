@@ -141,14 +141,12 @@ export function createStore(definitions, preloadedState = {}) {
     });
   }
 
-  let actionMiddleware;
-  let newStateMiddleware;
-  actionMiddleware = newStateMiddleware = () => {};
+  let newStateMiddleware = () => {};
   /**
-   * Set middleware to be invoked for each action and each state change
+   * Set middleware to be invoked upon state changes
    */
-  function setMiddleware(...mw) {
-    [actionMiddleware, newStateMiddleware] = mw;
+  function setMiddleware(middleware) {
+    newStateMiddleware = middleware;
   }
 
   /**
@@ -158,6 +156,24 @@ export function createStore(definitions, preloadedState = {}) {
    * These general action streams will be auto reduced for each module
    */
   function createState$(moduleName, streams, reducer) {
+    // Higher order reducer that handles the HYDRATE and CLEAR_STATE actions
+    const moduleReducer = (state, action) => {
+      switch (action.type) {
+        case HYDRATE:
+          return {
+            ...state,
+            ...action.payload,
+            hydrated: true,
+          };
+
+        case CLEAR_STATE:
+          return reducer(undefined, action);
+
+        default:
+          return reducer(state, action);
+      }
+    };
+
     // Combine module's action streams with common module actions streams
     const combinedAction$ = Observable.merge(
       ...streams,
@@ -172,26 +188,14 @@ export function createStore(definitions, preloadedState = {}) {
         if (register && !register.modules[moduleName]) {
           register.sideEffect$.next(action);
         }
-        actionMiddleware(moduleName, action);
       })
       // Start with current state, could be preloaded or just the initial state from the reducer
       .startWith(currentState[moduleName])
       // Reduce state with higher order reducer
       .scan((state, action) => {
-        switch (action.type) {
-          case HYDRATE:
-            return {
-              ...state,
-              ...action.payload,
-              hydrated: true,
-            };
-
-          case CLEAR_STATE:
-            return reducer(undefined, action);
-
-          default:
-            return reducer(state, action);
-        }
+        const newState = moduleReducer(state, action);
+        newStateMiddleware(moduleName, action, state, newState);
+        return newState;
       })
       // Record new state + side effects
       .do(newState => {
@@ -199,7 +203,6 @@ export function createStore(definitions, preloadedState = {}) {
           ...currentState,
           [moduleName]: newState,
         };
-        newStateMiddleware(moduleName, newState);
       })
       // Provide latest from state stream on subscribe
       .publishReplay(1);
