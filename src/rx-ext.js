@@ -1,4 +1,4 @@
-import { Observable, Subject } from 'rxjs';
+import { Observable, Subject, Scheduler } from 'rxjs';
 
 function isFSA(data) {
   return data && (data.type || data.error);
@@ -26,11 +26,16 @@ Observable.prototype.mapAction = function(type) {
       }
       return { type, payload };
     })
+    .delay(0, Scheduler.asap)
     .share();
 };
 
 Observable.prototype.pluckPayload = function(...keys) {
   return this.pluck('payload', ...keys);
+};
+
+Observable.prototype.mapPayload = function(project) {
+  return this.map(action => ({ ...action, payload: project(action.payload) }));
 };
 
 Observable.prototype.flatAjax = function(apiOperation, cancel$) {
@@ -41,7 +46,4 @@ Observable.prototype.switchAjax = function(apiOperation, cancel$) {
   return this.switchMap(fromPromise(apiOperation, cancel$));
 };
 
-export {
-  Subject,
-  Observable
-};
+export { Subject, Observable };

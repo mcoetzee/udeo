@@ -197,7 +197,7 @@ export function createStore(definitions, preloadedState = {}) {
         newStateMiddleware(moduleName, action, state, newState);
         return newState;
       })
-      // Record new state + side effects
+      // Record new state
       .do(newState => {
         currentState = {
           ...currentState,

@@ -1,6 +1,7 @@
 /* globals describe it */
 import { expect } from 'chai';
 import { createStore } from '../';
+import { Observable } from 'rxjs';
 
 const FOO = '@test/FOO';
 const BAR = '@test/BAR';
@@ -114,10 +115,9 @@ describe('createStore', () => {
   it('allows state access when composing action streams', () => {
     const fooModule = {
       flow(dispatch$, { getState }) {
-        const foo$ = dispatch$.filterAction(FOO)
-          .pluckPayload()
-          .map(payload => getState().barModule.bar * payload)
-          .mapAction(FOO);
+        const foo$ = dispatch$
+          .filterAction(FOO)
+          .mapPayload(foo => getState().barModule.bar * foo);
 
         return [foo$];
       },
@@ -226,49 +226,67 @@ describe('createStore', () => {
     sub2.unsubscribe();
   });
 
-  it('manages to scale', () => {
+  it('manages to scale', (done) => {
     function generateModule(count) {
-      const LOAD_FOO_X = `LOAD_FOO_${count}`;
-      const LOAD_FOO_EFFECT_X = `LOAD_FOO_EFFECT_${count}`;
-      const LOAD_BAR_X = `LOAD_BAR_${count}`;
-      const LOAD_BAR_EFFECT_X = `LOAD_BAR_EFFECT_${count}`;
-      const SHOOT_X = `SHOOT_${count}`;
+      const SOME_FOO = `SOME_FOO_${count}`;
+      const SOME_BAR = `SOME_BAR_${count}`;
+      const PEAKY_EFFECT = `PEAKY_EFFECT_${count}`;
 
+      const SHOOT = `SHOOT_${count}`;
+      const SHOOT_POOL = `SHOOT_POOL_${count}`;
+      const SHOOT_SOME_POOL = `SHOOT_SOME_POOL_${count}`;
+
+      const initialState = {
+        foo: [],
+        bar: [],
+        peakyEffect: [],
+        shoot: []
+      };
       return {
         flow(dispatch$) {
-          const loadFooX$ = dispatch$.filterAction(LOAD_FOO_X);
-          const loadBarX$ = dispatch$.filterAction(LOAD_BAR_X);
+          const someFoo$ = dispatch$.filterAction(SOME_FOO);
+          const someBar$ = dispatch$.filterAction(SOME_BAR);
+
+          const peakyEffect$ = Observable
+            .merge(
+              someFoo$
+                .pluckPayload()
+                .filter(foo => foo > 42)
+                .mapTo('Tommy'),
+              someBar$
+                .pluckPayload()
+                .filter(bar => bar < 42)
+                .mapTo('Arthur')
+            )
+            .mapAction(PEAKY_EFFECT);
+
           return [
-            loadFooX$,
-            loadFooX$.pluckPayload().filter(payload => payload > 42).mapAction(LOAD_FOO_EFFECT_X),
-            loadBarX$,
-            loadBarX$.pluckPayload().filter(payload => payload < 21).mapAction(LOAD_BAR_EFFECT_X),
-            dispatch$.filterAction(SHOOT_X),
+            someFoo$,
+            someBar$,
+            peakyEffect$,
+            dispatch$.filterAction(SHOOT),
+            dispatch$.filterAction(SHOOT_POOL),
+            dispatch$.filterAction(SHOOT_SOME_POOL),
           ];
         },
-        reducer(state = { foo: [], fooEffect: [], bar: [], barEffect: [], shoot: [] }, action) {
+        reducer(state = initialState, action) {
           switch (action.type) {
-            case LOAD_FOO_X:
+            case SOME_FOO:
               return {
                 ...state,
                 foo: state.foo.concat(action.payload),
               };
-            case LOAD_FOO_EFFECT_X:
-              return {
-                ...state,
-                fooEffect: state.fooEffect.concat(action.payload * 10),
-              };
-            case LOAD_BAR_X:
+            case SOME_BAR:
               return {
                 ...state,
                 bar: state.bar.concat(action.payload),
               };
-            case LOAD_BAR_EFFECT_X:
+            case PEAKY_EFFECT:
               return {
                 ...state,
-                barEffect: state.barEffect.concat(action.payload * 10),
+                peakyEffect: state.peakyEffect.concat(action.payload),
               };
-            case SHOOT_X:
+            case SHOOT:
               return {
                 ...state,
                 shoot: state.shoot.concat(action.payload),
@@ -281,7 +299,7 @@ describe('createStore', () => {
     }
 
     const modules = {};
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 250; i++) {
       const moduleName = `module${i}`;
       modules[moduleName] = generateModule(i);
     }
@@ -290,32 +308,84 @@ describe('createStore', () => {
     const store = createStore(modules);
     console.timeEnd('creatStore');
 
-    let module50State;
-    let sub1 = store.getState$('module50').subscribe(state => {
-      module50State = state;
-    });
-    let module150State;
-    let sub2 = store.getState$('module150').subscribe(state => {
-      module150State = state;
-    });
-    let sub3 = store.getState$('module250').subscribe(state => {});
+    let sub1 = store.getState$('module10').subscribe(state => {});
+    let sub2 = store.getState$('module20').subscribe(state => {});
+    let sub3 = store.getState$('module30').subscribe(state => {});
+    let sub4 = store.getState$('module40').subscribe(state => {});
+    let sub5 = store.getState$('module50').subscribe(state => {});
+    let sub6 = store.getState$('module60').subscribe(state => {});
+    let sub7 = store.getState$('module70').subscribe(state => {});
+    let sub8 = store.getState$('module80').subscribe(state => {});
+    let sub9 = store.getState$('module90').subscribe(state => {});
+    let sub10 = store.getState$('module100').subscribe(state => {});
 
     console.time('dispatch-FOO');
-    store.dispatch({ type: 'LOAD_FOO_50', payload: 40 });
+    store.dispatch({ type: 'SOME_FOO_20', payload: 40 });
     console.timeEnd('dispatch-FOO');
-    expect(module50State.foo).to.deep.eq([40]);
-    expect(module50State.fooEffect).to.deep.eq([]);
-    expect(store.getState().module50 === module50State).to.eq(true);
+
+    expect(store.getState().module20).to.deep.eq({
+      foo: [40],
+      bar: [],
+      peakyEffect: [],
+      shoot: [],
+    });
 
     console.time('dispatch-BAR');
-    store.dispatch({ type: 'LOAD_BAR_150', payload: 10 });
+    store.dispatch({ type: 'SOME_BAR_60', payload: 40 });
     console.timeEnd('dispatch-BAR');
-    expect(module150State.bar).to.deep.eq([10]);
-    expect(module150State.barEffect).to.deep.eq([100]);
 
-    sub1.unsubscribe();
-    sub2.unsubscribe();
-    sub3.unsubscribe();
+    expect(store.getState().module60).to.deep.eq({
+      foo: [],
+      bar: [40],
+      peakyEffect: [],
+      shoot: [],
+    });
+
+    console.time('dispatch-BAR');
+    store.dispatch({ type: 'SOME_BAR_70', payload: 10 });
+    console.timeEnd('dispatch-BAR');
+
+    console.time('dispatch-BAR');
+    store.dispatch({ type: 'SOME_BAR_80', payload: 10 });
+    console.timeEnd('dispatch-BAR');
+
+    console.time('dispatch-BAR');
+    store.dispatch({ type: 'SOME_BAR_90', payload: 10 });
+    console.timeEnd('dispatch-BAR');
+
+    console.time('dispatch-BAR');
+    store.dispatch({ type: 'SOME_BAR_100', payload: 10 });
+    console.timeEnd('dispatch-BAR');
+
+    setTimeout(() => {
+      const { module20, module60 } = store.getState();
+      expect(module20).to.deep.eq({
+        foo: [40],
+        bar: [],
+        peakyEffect: [],
+        shoot: [],
+      });
+
+      expect(module60).to.deep.eq({
+        foo: [],
+        bar: [40],
+        peakyEffect: ['Arthur'],
+        shoot: [],
+      });
+
+      sub1.unsubscribe();
+      sub2.unsubscribe();
+      sub3.unsubscribe();
+      sub4.unsubscribe();
+      sub5.unsubscribe();
+      sub6.unsubscribe();
+      sub7.unsubscribe();
+      sub8.unsubscribe();
+      sub9.unsubscribe();
+      sub10.unsubscribe();
+
+      done();
+    }, 20);
   });
 
   it('broadcasts state changes to multiple subscriptions', () => {
