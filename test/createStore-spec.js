@@ -485,4 +485,43 @@ describe('createStore', () => {
     sub1.unsubscribe();
     sub2.unsubscribe();
   });
+
+  it('switches the stream off after last subscription unsubscribes', () => {
+    const fooModule = {
+      flow: fooFlow,
+      reducer(state = [], { type }) {
+        switch (type) {
+          case FOO:
+            return state.concat(type);
+          default:
+            return state;
+        }
+      },
+    };
+
+    const store = createStore({ fooModule });
+
+    let foo1State;
+    const sub1 = store.getState$('fooModule').subscribe(s => {
+      foo1State = s;
+    });
+    let foo2State;
+    const sub2 = store.getState$('fooModule').subscribe(s => {
+      foo2State = s;
+    });
+
+    store.dispatch({ type: FOO });
+    expect(foo1State).to.deep.eq([FOO]);
+    sub1.unsubscribe();
+
+    store.dispatch({ type: FOO });
+    expect(foo1State).to.deep.eq([FOO]);
+    expect(foo2State).to.deep.eq([FOO, FOO]);
+
+    sub2.unsubscribe();
+    store.dispatch({ type: FOO });
+    expect(foo1State).to.deep.eq([FOO]);
+    expect(foo2State).to.deep.eq([FOO, FOO]);
+    expect(store.getState().fooModule).to.deep.eq([FOO, FOO]);
+  });
 });

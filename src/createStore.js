@@ -3,6 +3,7 @@ import { Observable, Subject } from './rx-ext';
 const INIT = '@udeo/INIT';
 const HYDRATE = '@udeo/HYDRATE';
 const CLEAR_STATE = '@udeo/CLEAR_STATE';
+const CONNECT_STREAM = '@udeo/CONNECT_STREAM';
 
 /**
  * @typedef moduleDefinition
@@ -29,10 +30,8 @@ const CLEAR_STATE = '@udeo/CLEAR_STATE';
 export function createStore(definitions, preloadedState = {}) {
   // The raw action stream used to dispatch actions
   const dispatch$ = new Subject();
-  // Collection of state streams by module - state streams are lazily connected upon request
+  // Collection of state streams by module - state streams are lazily connected upon subscribe
   const stateStreams = {};
-  // A register of connected state streams
-  const connectedStreams = {};
   // Current state of the application - records the latest output of all state streams
   let currentState = preloadedState;
   // A collection of side effect streams by action type
@@ -83,15 +82,10 @@ export function createStore(definitions, preloadedState = {}) {
   }
 
   /**
-   * Gets the state stream and connects it if not yet connected
+   * Gets the state stream for given module
    */
   function getState$(moduleName) {
-    let state$ = stateStreams[moduleName];
-    if (!connectedStreams[moduleName]) {
-      connectedStreams[moduleName] = state$;
-      state$.connect();
-    }
-    return state$;
+    return stateStreams[moduleName];
   }
 
   /**
@@ -189,9 +183,13 @@ export function createStore(definitions, preloadedState = {}) {
           register.sideEffect$.next(action);
         }
       })
-      // Start with current state, could be preloaded or just the initial state from the reducer
-      .startWith(currentState[moduleName])
-      // Reduce state with higher order reducer
+      // Start with a connect action. This is called when the state stream is
+      // subscribed to for the first time, or when it has been re-subscribed to
+      // after going cold.
+      .startWith({ type: CONNECT_STREAM })
+      // Handle connect action to pick up the state where we left it off
+      .map(action => action.type === CONNECT_STREAM ? currentState[moduleName] : action)
+      // Reduce state (with higher order reducer) for dispatched actions
       .scan((state, action) => {
         const newState = moduleReducer(state, action);
         newStateMiddleware(moduleName, action, state, newState);
@@ -205,7 +203,8 @@ export function createStore(definitions, preloadedState = {}) {
         };
       })
       // Provide latest from state stream on subscribe
-      .publishReplay(1);
+      .publishReplay(1)
+      .refCount();
   }
 
   // Init
