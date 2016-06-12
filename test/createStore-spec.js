@@ -112,7 +112,7 @@ describe('createStore', () => {
     });
   });
 
-  it('allows state access when composing action streams', () => {
+  it('provide access to application state when composing flow', () => {
     const fooModule = {
       flow(dispatch$, { getState }) {
         const foo$ = dispatch$
@@ -155,6 +155,90 @@ describe('createStore', () => {
     expect(fooState).to.deep.eq([20, 42]);
 
     subOne.unsubscribe();
+  });
+
+  it('provides access to all action streams when composing flow', (done) => {
+    const barSideEffectModule = {
+      flow(dispatch$, { getAction$ }) {
+        const bar$ = getAction$(BAR);
+        const bar1$ = bar$
+          .pluckPayload()
+          .filter(bar => bar <= 41)
+          .mapAction('BAR_1');
+
+        const bar2$ = bar$
+          .pluckPayload()
+          .filter(bar => bar > 41)
+          .mapAction('BAR_2');
+
+        return [
+          bar1$,
+          bar2$,
+        ];
+      },
+      reducer(state = { barOnes: [], barTwos: [] }, action) {
+        switch (action.type) {
+          case 'BAR_1':
+            return {
+              ...state,
+              barOnes: state.barOnes.concat(action.payload),
+            };
+          case 'BAR_2':
+            return {
+              ...state,
+              barTwos: state.barTwos.concat(action.payload),
+            };
+          default:
+            return state;
+        }
+      }
+    };
+    const barModule = {
+      flow(dispatch$) {
+        return [
+          dispatch$.filterAction(BAR).mapPayload(bar => bar * 2)
+        ];
+      },
+      reducer(state = [], action) {
+        switch (action.type) {
+          case BAR:
+            return state.concat(action.payload);
+          default:
+            return state;
+        }
+      }
+    };
+
+    const store = createStore({
+      barSideEffectModule,
+      barModule,
+    });
+
+    let barSideEffetState;
+    const sub1 = store.getState$('barSideEffectModule').subscribe(state => {
+      barSideEffetState = state;
+    });
+    let barState;
+    const sub2 = store.getState$('barModule').subscribe(state => {
+      barState = state;
+    });
+
+    store.dispatch({ type: BAR, payload: 20 });
+    expect(barState).to.deep.eq([40]);
+    expect(barSideEffetState).to.deep.eq({ barOnes: [], barTwos: [] });
+
+    store.dispatch({ type: BAR, payload: 21 });
+    expect(barState).to.deep.eq([40, 42]);
+    expect(barSideEffetState).to.deep.eq({ barOnes: [], barTwos: [] });
+
+    setTimeout(() => {
+      expect(barSideEffetState).to.deep.eq({ barOnes: [40], barTwos: [42] });
+
+      sub1.unsubscribe();
+      sub2.unsubscribe();
+
+      done();
+    }, 10);
   });
 
   it('preloads state', () => {
