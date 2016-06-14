@@ -1,7 +1,7 @@
 # udeo (alpha)
 Udeo is a [RxJS 5](http://github.com/ReactiveX/RxJS) based state stream container. It is comparable to Redux, where the store is instead modelled as a collection of state streams (one per module). Unidirectional data flow in Udeo is obtained with RxJS (instead of the event emitter approach of past and present Flux implementations), where each module composes its own data flow.
 
-The reasoning behind using RxJS for unidirectional data flow is given here **(NB: yet to be published)**: https://medium.com/@markusctz/7921e3c376a4
+The reasoning behind using RxJS for unidirectional data flow is given here: https://medium.com/@markusctz/state-streams-and-react-7921e3c376a4
 
 A state stream is effectively the result of reducing a stream of actions. It boils down to the simple flow:
 
@@ -16,7 +16,7 @@ npm install --save udeo
 ```
 
 ## Usage
-Please read the introduction on Medium **(NB: yet to be published)**: https://medium.com/@markusctz/7921e3c376a4
+Please read the introduction on Medium: https://medium.com/@markusctz/state-streams-and-react-7921e3c376a4
 
 ### `createStore(moduleDefinitions, [preloadedState])` [&#x24C8;](https://github.com/mcoetzee/udeo/blob/master/src/createStore.js "View in source")
 Creates a store which houses a collection of state streams. It adds a state stream for each module definition provided.
@@ -41,6 +41,7 @@ import { createStore } from 'udeo';
  * Returns the next version of the module's state (a plain old reducer function).
  */
 const searchModule = {
+  // dispatch$ is the stream through which dispatched actions flow - the raw action stream
   flow(dispatch$) {
     // Filter the raw action stream into a search stream
     const search$ = dispatch$.filterAction('SEARCH');
@@ -82,22 +83,22 @@ const searchModule = {
 
 const someOtherModule = { ... };
 
-// Creates the Udeo store - which houses a collection of state streams (one per module)
+// Creates the Udeo store which houses a collection of state streams
 // Exposes an API: { dispatch, getState$, getState, setMiddleware, ... }
 const store = createStore({ searchModule, someOtherModule });
 
 // Manually subscribe to a particular modules state stream. A view binding library like 
-// React-Udeo usually would be used instead of manually subscribing
+// React-Udeo would usually be used instead of manually subscribing
 store.getState$('searchModule').subscribe(state => {
   console.log('Search state: ', state);
 });
-// (console) Search state: { searching: false, results: [] }
+// >_ Search state: { searching: false, results: [] }
 
-// Dispatches the action into the raw action stream (`dispatch$`)
+// Dispatches the action into the raw action stream
 store.dispatch({ type: 'SEARCH', payload: 'Foo bar' });
-// (console) Search state: { searching: true, results: [] }
-// Going to the server...
-// (console) Search state: { searching: false, results: [20] }
+// >_ Search state: { searching: true, results: [] }
+// Searching...
+// >_ Search state: { searching: false, results: [20] }
 ```
 ## React Bindings
 https://github.com/mcoetzee/react-udeo
