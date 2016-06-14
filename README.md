@@ -1,4 +1,4 @@
-# udeo (alpha)
+# udeo (experimental)
 Udeo is a [RxJS 5](http://github.com/ReactiveX/RxJS) based state stream container. It is comparable to Redux, where the store is instead modelled as a collection of state streams (one per module). Unidirectional data flow in Udeo is obtained with RxJS (instead of the event emitter approach of past and present Flux implementations), where each module composes its own data flow.
 
 The reasoning behind using RxJS for unidirectional data flow is given here: https://medium.com/@markusctz/state-streams-and-react-7921e3c376a4
