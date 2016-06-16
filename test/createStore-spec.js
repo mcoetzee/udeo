@@ -608,4 +608,85 @@ describe('createStore', () => {
     expect(foo2State).to.deep.eq([FOO, FOO]);
     expect(store.getState().fooModule).to.deep.eq([FOO, FOO]);
   });
+
+  it('provides access to state streams when composing flow', (done) => {
+    const mainModule = {
+      flow(dispatch$) {
+        return [
+          dispatch$.filterAction('COMPUTE'),
+          dispatch$.filterAction('FOO'),
+        ];
+      },
+      reducer(state = { computed: {}, foos: [] }, action) {
+        switch (action.type) {
+          case 'COMPUTE':
+            return {
+              ...state,
+              computed: {
+                result: action.payload * 42
+              }
+            };
+          case 'FOO':
+            return {
+              ...state,
+              foos: state.foos.concat(action.payload),
+            };
+          default:
+            return state;
+        }
+      }
+    };
+
+    const sideEffectModule = {
+      flow(dispatch$, { getState$ }) {
+        const sideEffect$ = getState$('mainModule')
+          .pluck('computed')
+          .distinctUntilChanged()
+          .filter(computed => computed.result)
+          .mapAction('SIDE_EFFECT');
+
+        return [sideEffect$];
+      },
+      reducer(state = [], action) {
+        switch (action.type) {
+          case 'SIDE_EFFECT':
+            return state.concat(action.payload.result + 1);
+          default:
+            return state;
+        }
+      }
+    };
+
+    const store = createStore({ sideEffectModule, mainModule });
+
+    let mainModuleState;
+    const sub1 = store.getState$('mainModule').subscribe(state => {
+      mainModuleState = state;
+    });
+
+    let sideEffectModuleState;
+    const sub2 = store.getState$('sideEffectModule').subscribe(state => {
+      sideEffectModuleState = state;
+    });
+
+    store.dispatch({ type: 'COMPUTE', payload: 10 });
+    expect(mainModuleState).to.deep.eq({ computed: { result: 420 }, foos: [] });
+    expect(sideEffectModuleState).to.deep.eq([]);
+
+    store.dispatch({ type: 'FOO', payload: 10 });
+    expect(mainModuleState).to.deep.eq({ computed: { result: 420 }, foos: [10] });
+    expect(sideEffectModuleState).to.deep.eq([]);
+
+    store.dispatch({ type: 'COMPUTE', payload: 20 });
+    expect(mainModuleState).to.deep.eq({ computed: { result: 840 }, foos: [10] });
+    expect(sideEffectModuleState).to.deep.eq([]);
+
+    setTimeout(() => {
+      expect(sideEffectModuleState).to.deep.eq([421, 841]);
+
+      sub1.unsubscribe();
+      sub2.unsubscribe();
+      done();
+    }, 0);
+  });
 });

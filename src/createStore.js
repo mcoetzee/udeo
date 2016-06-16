@@ -52,6 +52,7 @@ export function createStore(definitions, preloadedState = {}) {
       // The API provided to each flow function in addition to the dispatch$
       const api = {
         getState,
+        getState$,
         // Provides a way to get a single action stream by type
         getAction$: (actionType) => getSideEffect$(moduleName, actionType),
         dispatch,
@@ -86,7 +87,12 @@ export function createStore(definitions, preloadedState = {}) {
    * Gets the state stream for given module
    */
   function getState$(moduleName) {
-    return stateStreams[moduleName];
+    let state$ = stateStreams[moduleName];
+    if (!state$) {
+      // We're still busy adding the stream so return a deferred observable
+      state$ = Observable.defer(() => stateStreams[moduleName]);
+    }
+    return state$;
   }
 
   /**
